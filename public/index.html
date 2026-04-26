@@ -131,7 +131,7 @@ let grafico;
 
 // ===== BUSCAR =====
 async function gerarMes() {
-  const res = await fetch("http://localhost:3000/mes");
+  const res = await fetch("/mes");
   return await res.json();
 }
 
@@ -224,11 +224,11 @@ async function adicionar() {
 async function fecharMes() {
   const dados = await gerarMes();
 
-  await fetch("http://localhost:3000/fechar", {
+  await fetch("/fechar", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
-      mes: "2026-04",
+      mes: new Date().toISOString().slice(0,7),
       dados
     })
   });
@@ -239,7 +239,7 @@ async function fecharMes() {
 
 // ===== HISTÓRICO =====
 async function carregarHistorico() {
-  const res = await fetch("http://localhost:3000/historico");
+  const res = await fetch("/historico");
   const meses = await res.json();
 
   const div = document.getElementById("historico");
@@ -265,7 +265,7 @@ async function carregarHistorico() {
 
 // ===== DETALHE =====
 async function verDetalhe(id) {
-  const res = await fetch("http://localhost:3000/historico");
+  const res = await fetch("/historico");
   const meses = await res.json();
 
   const mes = meses.find(m => m._id === id);
@@ -293,7 +293,7 @@ async function verDetalhe(id) {
 async function deletar(id) {
   if (!confirm("Deseja excluir?")) return;
 
-  await fetch(`http://localhost:3000/regras/${id}`, {
+  await fetch(`/regras/${id}`, {
     method: "DELETE"
   });
 
@@ -304,11 +304,11 @@ async function deletar(id) {
 async function deletarMes(id) {
   if (!confirm("Deseja apagar este mês?")) return;
 
-  await fetch(`http://localhost:3000/historico/${id}`, {
+  await fetch(`/historico/${id}`, {
     method: "DELETE"
   });
 
-  await carregarHistorico();
+  carregarHistorico();
 }
 
 // ===== INIT =====
