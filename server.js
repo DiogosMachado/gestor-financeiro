@@ -162,6 +162,16 @@ app.delete("/historico/:id", async (req, res) => {
   }
 });
 
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static("public"));
+
+mongoose.connect(process.env.MONGO_URL)
+  .then(() => console.log("Mongo conectado"))
+  .catch(err => console.log(err));
+
+app.listen(PORT, () => console.log("Rodando na porta", PORT));
+
 const path = require("path");
 
 app.use(express.static(path.join(__dirname, "public")));
