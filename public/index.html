@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestor Financeiro</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+  font-family: Arial;
+  background: #0f172a;
+  color: white;
+  margin: 0;
+}
+.container {
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
+}
+.card {
+  background: #1e293b;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+input, select, button {
+  padding: 10px;
+  margin: 5px 0;
+  width: 100%;
+  border-radius: 8px;
+  border: none;
+}
+button {
+  background: #22c55e;
+  color: white;
+  cursor: pointer;
+}
+.item {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #334155;
+  padding: 10px 0;
+}
+
+/* HISTÓRICO */
+.hist-item {
+  background: #1e293b;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+.hist-item:hover {
+  background: #334155;
+}
+.hist-top {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+}
+.hist-bottom {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.hist-top div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hist-top button {
+  width: auto;
+  padding: 5px 10px;
+  background: #ef4444;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>Gestor Financeiro</h1>
+
+<div class="card">
+  <h3>Adicionar</h3>
+  <input id="desc" placeholder="Descrição">
+  <input id="valor" type="number" placeholder="Valor">
+
+  <select id="tipo">
+    <option value="variavel">Variável</option>
+    <option value="fixo">Fixo</option>
+    <option value="parcelado">Parcelado</option>
+  </select>
+
+  <input id="parcelas" type="number" placeholder="Total de parcelas">
+  
+  <button onclick="adicionar()">Adicionar</button>
+</div>
+
+<div class="card">
+  <h3>Resumo</h3>
+  <div id="resumo"></div>
+</div>
+
+<div class="card">
+  <canvas id="grafico"></canvas>
+</div>
+
+<div class="card">
+  <h3>Transações</h3>
+  <div id="lista"></div>
+</div>
+
+<div class="card">
+  <h3>Histórico de Meses</h3>
+  <div id="historico"></div>
+</div>
+
+<div class="card" id="detalheMes" style="display:none;">
+  <h3>Detalhes do Mês</h3>
+  <div id="detalhes"></div>
+</div>
+
+<button onclick="fecharMes()">Fechar Mês</button>
+
+</div>
+
+<script>
+
+let grafico;
+
+// ===== BUSCAR =====
+async function gerarMes() {
+  const res = await fetch("http://localhost:3000/mes");
+  return await res.json();
+}
+
+// ===== RENDER =====
+async function render() {
+  const dados = await gerarMes();
+
+  const lista = document.getElementById("lista");
+  lista.innerHTML = "";
+
+  let total = 0;
+
+  dados.forEach(d => {
+    total += d.valor;
+
+    lista.innerHTML += `
+      <div class="item">
+        <div>
+          ${d.desc}<br>
+          <small>${d.tipo} ${d.parcela || ""}</small>
+        </div>
+        <div>
+          R$ ${d.valor}
+          ${d._id ? `<button onclick="deletar('${d._id}')">X</button>` : ""}
+        </div>
+      </div>
+    `;
+  });
+
+  document.getElementById("resumo").innerHTML = `Total gasto: R$ ${total}`;
+
+  gerarGrafico(dados);
+  carregarHistorico();
+}
+
+// ===== GRÁFICO =====
+function gerarGrafico(dados) {
+
+  const fixo = dados.filter(d => d.tipo === "fixo").reduce((a,b)=>a+b.valor,0);
+  const variavel = dados.filter(d => d.tipo === "variavel").reduce((a,b)=>a+b.valor,0);
+  const parcelado = dados.filter(d => d.tipo === "parcelado").reduce((a,b)=>a+b.valor,0);
+
+  if (grafico) grafico.destroy();
+
+  grafico = new Chart(document.getElementById("grafico"), {
+    type: "doughnut",
+    data: {
+      labels: ["Fixo", "Variável", "Parcelado"],
+      datasets: [{
+        data: [fixo, variavel, parcelado]
+      }]
+    }
+  });
+}
+
+// ===== ADICIONAR =====
+async function adicionar() {
+  const desc = document.getElementById("desc").value;
+  const valor = Number(document.getElementById("valor").value);
+  const tipo = document.getElementById("tipo").value;
+  const parcelas = Number(document.getElementById("parcelas").value);
+
+  if (!desc || !valor) {
+    alert("Preencha os campos");
+    return;
+  }
+
+  await fetch("http://localhost:3000/regras", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      descricao: desc,
+      tipo,
+      valor,
+      valorParcela: valor,
+      totalParcelas: parcelas,
+      parcelasPagas: 0,
+      ativo: true
+    })
+  });
+
+  document.getElementById("desc").value = "";
+  document.getElementById("valor").value = "";
+  document.getElementById("parcelas").value = "";
+
+  render();
+}
+
+// ===== FECHAR MÊS =====
+async function fecharMes() {
+  const dados = await gerarMes();
+
+  await fetch("http://localhost:3000/fechar", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      mes: "2026-04",
+      dados
+    })
+  });
+
+  alert("Mês fechado!");
+  render();
+}
+
+// ===== HISTÓRICO =====
+async function carregarHistorico() {
+  const res = await fetch("http://localhost:3000/historico");
+  const meses = await res.json();
+
+  const div = document.getElementById("historico");
+  div.innerHTML = "";
+
+  meses.forEach(m => {
+    div.innerHTML += `
+      <div class="hist-item">
+        <div class="hist-top">
+          <span onclick="verDetalhe('${m._id}')">${m.mes}</span>
+          <div>
+            <span>R$ ${m.total}</span>
+            <button onclick="deletarMes('${m._id}')">🗑️</button>
+          </div>
+        </div>
+        <div class="hist-bottom">
+          Clique para ver detalhes
+        </div>
+      </div>
+    `;
+  });
+}
+
+// ===== DETALHE =====
+async function verDetalhe(id) {
+  const res = await fetch("http://localhost:3000/historico");
+  const meses = await res.json();
+
+  const mes = meses.find(m => m._id === id);
+
+  const div = document.getElementById("detalhes");
+  const box = document.getElementById("detalheMes");
+
+  box.style.display = "block";
+  div.innerHTML = "";
+
+  mes.dados.forEach(d => {
+    div.innerHTML += `
+      <div class="item">
+        <div>
+          ${d.desc}<br>
+          <small>${d.tipo} ${d.parcela || ""}</small>
+        </div>
+        <div>R$ ${d.valor}</div>
+      </div>
+    `;
+  });
+}
+
+// ===== DELETAR REGRA =====
+async function deletar(id) {
+  if (!confirm("Deseja excluir?")) return;
+
+  await fetch(`http://localhost:3000/regras/${id}`, {
+    method: "DELETE"
+  });
+
+  render();
+}
+
+// ===== DELETAR MÊS =====
+async function deletarMes(id) {
+  if (!confirm("Deseja apagar este mês?")) return;
+
+  await fetch(`http://localhost:3000/historico/${id}`, {
+    method: "DELETE"
+  });
+
+  await carregarHistorico();
+}
+
+// ===== INIT =====
+render();
+
+</script>
+</body>
+</html>
