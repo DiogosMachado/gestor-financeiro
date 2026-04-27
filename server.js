@@ -1,17 +1,23 @@
-const express = require("express"); 
+require("dotenv").config();
+
+const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-
-console.log("🔥 SERVER CORRIGIDO RODANDO 🔥");
+const path = require("path");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-mongoose.connect("mongodb://127.0.0.1:27017/financas");
+// ===== CONEXÃO MONGO =====
+mongoose.connect(
+  process.env.MONGO_URL || "mongodb://127.0.0.1:27017/financas"
+)
+.then(() => console.log("🔥 Mongo conectado"))
+.catch(err => console.log("❌ Erro Mongo:", err));
 
 // ===== MODELS =====
-
 const Regra = mongoose.model("Regra", {
   descricao: String,
   tipo: String,
@@ -30,23 +36,23 @@ const Mes = mongoose.model("Mes", {
 
 // ===== ROTAS =====
 
-// CRIAR REGRA
+// Criar regra
 app.post("/regras", async (req, res) => {
   try {
     const regra = await Regra.create(req.body);
     res.json(regra);
   } catch (err) {
-    res.status(500).json({ erro: "Erro ao salvar regra" });
+    res.status(500).json({ erro: err.message });
   }
 });
 
-// LISTAR REGRAS
+// Listar regras
 app.get("/regras", async (req, res) => {
   const regras = await Regra.find();
   res.json(regras);
 });
 
-// GERAR MÊS
+// ===== GERAR MÊS =====
 app.get("/mes", async (req, res) => {
   const regras = await Regra.find();
 
@@ -55,15 +61,17 @@ app.get("/mes", async (req, res) => {
   regras.forEach(r => {
     if (!r.ativo) return;
 
-    if (r.tipo === "fixo") {
+    // 🔥 ENTRADA + FIXO + VARIÁVEL
+    if (["fixo", "variavel", "entrada"].includes(r.tipo)) {
       lista.push({
         _id: r._id,
         desc: r.descricao,
         valor: r.valor,
-        tipo: "fixo"
+        tipo: r.tipo
       });
     }
 
+    // 🔥 PARCELADO
     if (r.tipo === "parcelado") {
       if (r.parcelasPagas < r.totalParcelas) {
         lista.push({
@@ -80,23 +88,26 @@ app.get("/mes", async (req, res) => {
   res.json(lista);
 });
 
-// FECHAR MÊS (CORRIGIDO)
+// ===== FECHAR MÊS =====
 app.post("/fechar", async (req, res) => {
   try {
     const { mes, dados } = req.body;
 
-    // 🚫 BLOQUEIA DUPLICAÇÃO
-    const existe = await Mes.findOne({ mes });
-
-    if (existe) {
-      return res.status(400).json({ erro: "Mês já foi fechado!" });
+    if (!dados || !Array.isArray(dados)) {
+      return res.status(400).json({ erro: "Dados inválidos" });
     }
 
+    // 🔥 EVITA DUPLICAR MÊS
+    const existe = await Mes.findOne({ mes });
+    if (existe) {
+      return res.status(400).json({ erro: "Mês já fechado" });
+    }
+
+    // 🔥 ATUALIZA PARCELAS
     const regras = await Regra.find();
 
     for (let r of regras) {
       if (r.tipo === "parcelado" && r.ativo) {
-
         if (r.parcelasPagas < r.totalParcelas) {
           r.parcelasPagas++;
 
@@ -109,7 +120,11 @@ app.post("/fechar", async (req, res) => {
       }
     }
 
-    const total = dados.reduce((acc, d) => acc + d.valor, 0);
+    // 🔥 CALCULA TOTAL (AGORA COM ENTRADA)
+    const total = dados.reduce((acc, d) => {
+      if (d.tipo === "entrada") return acc + d.valor;
+      return acc - d.valor;
+    }, 0);
 
     await Mes.create({
       mes,
@@ -120,61 +135,34 @@ app.post("/fechar", async (req, res) => {
     res.json({ ok: true });
 
   } catch (err) {
-    res.status(500).json({ erro: "Erro ao fechar mês" });
+    res.status(500).json({ erro: err.message });
   }
 });
 
-// LISTAR HISTÓRICO
+// ===== HISTÓRICO =====
 app.get("/historico", async (req, res) => {
   const meses = await Mes.find().sort({ mes: -1 });
   res.json(meses);
 });
 
-// EXCLUIR REGRA
+// ===== DELETAR REGRA =====
 app.delete("/regras/:id", async (req, res) => {
-  try {
-    const regra = await Regra.findByIdAndDelete(req.params.id);
-
-    if (!regra) {
-      return res.status(404).json({ erro: "Regra não encontrada" });
-    }
-
-    res.json({ ok: true });
-
-  } catch {
-    res.status(500).json({ erro: "Erro ao excluir regra" });
-  }
+  await Regra.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
 });
 
-// EXCLUIR MÊS (CORRIGIDO)
+// ===== DELETAR MÊS =====
 app.delete("/historico/:id", async (req, res) => {
-  try {
-    const mes = await Mes.findByIdAndDelete(req.params.id);
-
-    if (!mes) {
-      return res.status(404).json({ erro: "Mês não encontrado" });
-    }
-
-    res.json({ ok: true });
-
-  } catch (err) {
-    res.status(500).json({ erro: "Erro ao excluir mês" });
-  }
+  await Mes.findByIdAndDelete(req.params.id);
+  res.json({ ok: true });
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.use(express.static("public"));
-
-mongoose.connect(process.env.MONGO_URL)
-  .then(() => console.log("Mongo conectado"))
-  .catch(err => console.log(err));
-
-app.listen(PORT, () => console.log("Rodando na porta", PORT));
-
-const path = require("path");
-
+// ===== FRONTEND =====
 app.use(express.static(path.join(__dirname, "public")));
 
-// START
-app.listen(3000, () => console.log("Servidor rodando na porta 3000"));
+// ===== SERVIDOR =====
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("🚀 Servidor rodando na porta", PORT);
+});

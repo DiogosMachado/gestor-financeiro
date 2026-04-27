@@ -87,6 +87,7 @@ button {
   <input id="valor" type="number" placeholder="Valor">
 
   <select id="tipo">
+    <option value="entrada">Salário</option>
     <option value="variavel">Variável</option>
     <option value="fixo">Fixo</option>
     <option value="parcelado">Parcelado</option>
@@ -142,26 +143,48 @@ async function render() {
   const lista = document.getElementById("lista");
   lista.innerHTML = "";
 
-  let total = 0;
+ let entradas = 0;
+let saidas = 0;
 
-  dados.forEach(d => {
-    total += d.valor;
+dados.forEach(d => {
 
-    lista.innerHTML += `
-      <div class="item">
-        <div>
-          ${d.desc}<br>
-          <small>${d.tipo} ${d.parcela || ""}</small>
-        </div>
-        <div>
-          R$ ${d.valor}
-          ${d._id ? `<button onclick="deletar('${d._id}')">X</button>` : ""}
-        </div>
+  // 💰 separa entrada e saída
+  if (d.tipo === "entrada") {
+    entradas += d.valor;
+  } else {
+    saidas += d.valor;
+  }
+
+  // 🎨 render da lista (mantém igual, só melhora visual)
+  lista.innerHTML += `
+    <div class="item">
+      <div>
+        ${d.desc}<br>
+        <small>${d.tipo} ${d.parcela || ""}</small>
       </div>
-    `;
-  });
+      <div>
+        <span style="color:${d.tipo === "entrada" ? "#22c55e" : "#ef4444"}">
+          R$ ${d.valor}
+        </span>
+        ${d._id ? `<button onclick="deletar('${d._id}')">X</button>` : ""}
+      </div>
+    </div>
+  `;
+});
 
-  document.getElementById("resumo").innerHTML = `Total gasto: R$ ${total}`;
+// 🧠 cálculo final
+const saldo = entradas - saidas;
+
+// 🎨 cor dinâmica
+const corSaldo = saldo >= 0 ? "#22c55e" : "#ef4444";
+
+// 📊 resumo atualizado
+
+ document.getElementById("resumo").innerHTML = `
+  Entradas: R$ ${entradas} <br>
+  Gastos: R$ ${saidas} <br>
+  <strong>Saldo: R$ ${saldo}</strong>
+`;
 
   gerarGrafico(dados);
   carregarHistorico();
@@ -170,18 +193,32 @@ async function render() {
 // ===== GRÁFICO =====
 function gerarGrafico(dados) {
 
-  const fixo = dados.filter(d => d.tipo === "fixo").reduce((a,b)=>a+b.valor,0);
-  const variavel = dados.filter(d => d.tipo === "variavel").reduce((a,b)=>a+b.valor,0);
-  const parcelado = dados.filter(d => d.tipo === "parcelado").reduce((a,b)=>a+b.valor,0);
+  // 💰 NOVO (entrada)
+  const entrada = dados
+    .filter(d => d.tipo === "entrada")
+    .reduce((a, b) => a + b.valor, 0);
+
+  // 💸 existentes
+  const fixo = dados
+    .filter(d => d.tipo === "fixo")
+    .reduce((a, b) => a + b.valor, 0);
+
+  const variavel = dados
+    .filter(d => d.tipo === "variavel")
+    .reduce((a, b) => a + b.valor, 0);
+
+  const parcelado = dados
+    .filter(d => d.tipo === "parcelado")
+    .reduce((a, b) => a + b.valor, 0);
 
   if (grafico) grafico.destroy();
 
   grafico = new Chart(document.getElementById("grafico"), {
     type: "doughnut",
     data: {
-      labels: ["Fixo", "Variável", "Parcelado"],
+      labels: ["Entrada", "Fixo", "Variável", "Parcelado"],
       datasets: [{
-        data: [fixo, variavel, parcelado]
+        data: [entrada, fixo, variavel, parcelado]
       }]
     }
   });
