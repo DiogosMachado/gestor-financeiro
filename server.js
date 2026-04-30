@@ -27,7 +27,7 @@ mongoose.connect(MONGO_URL || "mongodb://127.0.0.1:27017/financas")
 .then(() => console.log("🔥 Mongo conectado"))
 .catch(err => console.log("❌ Erro Mongo:", err.message));
 
-// ===== MODELS (CORRIGIDO PRA RENDER) =====
+// ===== MODELS =====
 const User = mongoose.models.User || mongoose.model("User", {
   email: String,
   senha: String
@@ -101,12 +101,13 @@ app.post("/register", async (req, res) => {
 
     const hash = await bcrypt.hash(senha, 10);
 
-    const user = await User.create({ email, senha: hash });
+    await User.create({ email, senha: hash });
 
     res.json({ ok: true });
 
   } catch (err) {
-    res.status(500).json({ erro: err.message });
+    console.log("ERRO REGISTER:", err);
+    res.status(500).json({ erro: "Erro interno" });
   }
 });
 
@@ -136,7 +137,8 @@ app.post("/login", async (req, res) => {
     res.json({ token });
 
   } catch (err) {
-    res.status(500).json({ erro: err.message });
+    console.log("ERRO LOGIN:", err);
+    res.status(500).json({ erro: "Erro interno" });
   }
 });
 
@@ -163,7 +165,7 @@ app.get("/regras", auth, checkDB, async (req, res) => {
   }
 });
 
-// ===== GERAR MÊS =====
+// ===== MES =====
 app.get("/mes", auth, checkDB, async (req, res) => {
   try {
     const regras = await Regra.find({ userId: req.userId });
@@ -202,51 +204,6 @@ app.get("/mes", auth, checkDB, async (req, res) => {
   }
 });
 
-// ===== FECHAR MÊS =====
-app.post("/fechar", auth, checkDB, async (req, res) => {
-  try {
-    const { mes, dados } = req.body;
-
-    const existe = await Mes.findOne({ mes, userId: req.userId });
-
-    if (existe) {
-      return res.status(400).json({ erro: "Mês já fechado" });
-    }
-
-    const regras = await Regra.find({ userId: req.userId });
-
-    for (let r of regras) {
-      if (r.tipo === "parcelado" && r.ativo) {
-        if (r.parcelasPagas < r.totalParcelas) {
-          r.parcelasPagas++;
-          if (r.parcelasPagas === r.totalParcelas) {
-            r.ativo = false;
-          }
-          await r.save();
-        }
-      }
-    }
-
-    const total = dados.reduce((acc, d) => {
-      return d.tipo === "entrada"
-        ? acc + d.valor
-        : acc - d.valor;
-    }, 0);
-
-    await Mes.create({
-      userId: req.userId,
-      mes,
-      dados,
-      total
-    });
-
-    res.json({ ok: true });
-
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
 // ===== HISTÓRICO =====
 app.get("/historico", auth, checkDB, async (req, res) => {
   try {
@@ -257,34 +214,24 @@ app.get("/historico", auth, checkDB, async (req, res) => {
   }
 });
 
-// ===== DELETE =====
-app.delete("/regras/:id", auth, checkDB, async (req, res) => {
-  try {
-    await Regra.deleteOne({ _id: req.params.id, userId: req.userId });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
-app.delete("/historico/:id", auth, checkDB, async (req, res) => {
-  try {
-    await Mes.deleteOne({ _id: req.params.id, userId: req.userId });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
 // ===== FRONTEND =====
 app.use(express.static(path.join(__dirname, "public")));
 
-// ⚠️ Fallback CORRETO (não quebra API)
-app.use((req, res) => {
+// ⚠️ CORREÇÃO CRÍTICA (ESSA É A CAUSA DO SEU ERRO)
+app.get("*", (req, res) => {
+  // NÃO deixa API cair aqui
+  if (req.path.startsWith("/login") || 
+      req.path.startsWith("/register") ||
+      req.path.startsWith("/regras") ||
+      req.path.startsWith("/mes") ||
+      req.path.startsWith("/historico")) {
+    return res.status(404).json({ erro: "Rota não encontrada" });
+  }
+
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-// ===== SERVIDOR =====
+// ===== SERVER =====
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
