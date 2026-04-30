@@ -9,77 +9,80 @@
 
 <style>
 body {
-  font-family: Arial;
-  background: #0f172a;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #0b0f1a;
   color: white;
   margin: 0;
 }
+
 .container {
-  max-width: 900px;
+  max-width: 500px;
   margin: auto;
-  padding: 20px;
-}
-.card {
-  background: #1e293b;
   padding: 15px;
-  border-radius: 10px;
-  margin-bottom: 10px;
 }
-input, select, button {
-  padding: 10px;
+
+.card {
+  background: #111827;
+  padding: 15px;
+  border-radius: 16px;
+  margin-bottom: 12px;
+}
+
+input, select {
+  padding: 12px;
   margin: 5px 0;
   width: 100%;
-  border-radius: 8px;
+  border-radius: 10px;
   border: none;
+  background: #1f2937;
+  color: white;
 }
+
 button {
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
   background: #22c55e;
   color: white;
+  font-weight: bold;
   cursor: pointer;
 }
+
 .item {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #334155;
-  padding: 10px 0;
+  padding: 12px 0;
+  border-bottom: 1px solid #1f2937;
 }
 
-/* HISTÓRICO */
-.hist-item {
-  background: #1e293b;
-  padding: 15px;
-  border-radius: 10px;
-  margin-bottom: 10px;
-}
-.hist-item:hover {
-  background: #334155;
-}
-.hist-top {
-  display: flex;
-  justify-content: space-between;
+.saldo {
+  font-size: 28px;
   font-weight: bold;
 }
-.hist-bottom {
-  font-size: 12px;
-  opacity: 0.7;
-}
-.hist-top div {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.hist-top button {
-  width: auto;
-  padding: 5px 10px;
-  background: #ef4444;
-}
+
+.positivo { color: #22c55e; }
+.negativo { color: #ef4444; }
 </style>
 </head>
 
 <body>
+
 <div class="container">
 
+<!-- LOGIN -->
+<div id="loginBox" class="card">
+  <h2>Login</h2>
+  <input id="email" placeholder="Email">
+  <input id="senha" type="password" placeholder="Senha">
+  <button onclick="logar()">Entrar</button>
+  <button onclick="registrar()">Criar conta</button>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none;">
+
 <h1>Gestor Financeiro</h1>
+<button onclick="sair()">Sair</button>
 
 <div class="card">
   <h3>Adicionar</h3>
@@ -99,7 +102,6 @@ button {
 </div>
 
 <div class="card">
-  <h3>Resumo</h3>
   <div id="resumo"></div>
 </div>
 
@@ -113,26 +115,77 @@ button {
 </div>
 
 <div class="card">
-  <h3>Histórico de Meses</h3>
+  <h3>Histórico</h3>
   <div id="historico"></div>
 </div>
 
 <div class="card" id="detalheMes" style="display:none;">
-  <h3>Detalhes do Mês</h3>
+  <h3>Detalhes</h3>
   <div id="detalhes"></div>
 </div>
 
 <button onclick="fecharMes()">Fechar Mês</button>
 
 </div>
+</div>
 
 <script>
 
+const API = "http://localhost:3000";
+let token = localStorage.getItem("token");
 let grafico;
 
-// ===== BUSCAR =====
+// ===== LOGIN CONTROL =====
+if (token) {
+  document.getElementById("loginBox").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  render();
+} else {
+  document.getElementById("loginBox").style.display = "block";
+}
+
+// ===== AUTH =====
+async function logar() {
+  const email = document.getElementById("email").value;
+  const senha = document.getElementById("senha").value;
+
+  const res = await fetch(API + "/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ email, senha })
+  });
+
+  const data = await res.json();
+
+  if (!data.token) return alert("Erro no login");
+
+  localStorage.setItem("token", data.token);
+  location.reload();
+}
+
+async function registrar() {
+  const email = document.getElementById("email").value;
+  const senha = document.getElementById("senha").value;
+
+  await fetch(API + "/register", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ email, senha })
+  });
+
+  alert("Conta criada!");
+}
+
+function sair() {
+  localStorage.removeItem("token");
+  location.reload();
+}
+
+// ===== API =====
 async function gerarMes() {
-  const res = await fetch("/mes");
+  const res = await fetch(API + "/mes", {
+    headers: { Authorization: token }
+  });
   return await res.json();
 }
 
@@ -140,51 +193,34 @@ async function gerarMes() {
 async function render() {
   const dados = await gerarMes();
 
+  let entradas = 0;
+  let saidas = 0;
   const lista = document.getElementById("lista");
   lista.innerHTML = "";
 
- let entradas = 0;
-let saidas = 0;
+  dados.forEach(d => {
 
-dados.forEach(d => {
+    if (d.tipo === "entrada") entradas += d.valor;
+    else saidas += d.valor;
 
-  // 💰 separa entrada e saída
-  if (d.tipo === "entrada") {
-    entradas += d.valor;
-  } else {
-    saidas += d.valor;
-  }
-
-  // 🎨 render da lista (mantém igual, só melhora visual)
-  lista.innerHTML += `
-    <div class="item">
-      <div>
-        ${d.desc}<br>
-        <small>${d.tipo} ${d.parcela || ""}</small>
-      </div>
-      <div>
-        <span style="color:${d.tipo === "entrada" ? "#22c55e" : "#ef4444"}">
+    lista.innerHTML += `
+      <div class="item">
+        <div>${d.desc}</div>
+        <div>
           R$ ${d.valor}
-        </span>
-        ${d._id ? `<button onclick="deletar('${d._id}')">X</button>` : ""}
+          <button onclick="deletar('${d._id}')">X</button>
+        </div>
       </div>
+    `;
+  });
+
+  const saldo = entradas - saidas;
+
+  document.getElementById("resumo").innerHTML = `
+    <div class="saldo ${saldo >= 0 ? "positivo" : "negativo"}">
+      R$ ${saldo.toFixed(2)}
     </div>
   `;
-});
-
-// 🧠 cálculo final
-const saldo = entradas - saidas;
-
-// 🎨 cor dinâmica
-const corSaldo = saldo >= 0 ? "#22c55e" : "#ef4444";
-
-// 📊 resumo atualizado
-
- document.getElementById("resumo").innerHTML = `
-  Entradas: R$ ${entradas} <br>
-  Gastos: R$ ${saidas} <br>
-  <strong>Saldo: R$ ${saldo}</strong>
-`;
 
   gerarGrafico(dados);
   carregarHistorico();
@@ -192,78 +228,80 @@ const corSaldo = saldo >= 0 ? "#22c55e" : "#ef4444";
 
 // ===== GRÁFICO =====
 function gerarGrafico(dados) {
-
-  // 💰 NOVO (entrada)
-  const entrada = dados
-    .filter(d => d.tipo === "entrada")
-    .reduce((a, b) => a + b.valor, 0);
-
-  // 💸 existentes
-  const fixo = dados
-    .filter(d => d.tipo === "fixo")
-    .reduce((a, b) => a + b.valor, 0);
-
-  const variavel = dados
-    .filter(d => d.tipo === "variavel")
-    .reduce((a, b) => a + b.valor, 0);
-
-  const parcelado = dados
-    .filter(d => d.tipo === "parcelado")
-    .reduce((a, b) => a + b.valor, 0);
+  const entrada = dados.filter(d => d.tipo === "entrada").reduce((a,b)=>a+b.valor,0);
+  const saida = dados.filter(d => d.tipo !== "entrada").reduce((a,b)=>a+b.valor,0);
 
   if (grafico) grafico.destroy();
 
   grafico = new Chart(document.getElementById("grafico"), {
     type: "doughnut",
     data: {
-      labels: ["Entrada", "Fixo", "Variável", "Parcelado"],
-      datasets: [{
-        data: [entrada, fixo, variavel, parcelado]
-      }]
+      labels: ["Entrada", "Saída"],
+      datasets: [{ data: [entrada, saida] }]
     }
   });
 }
 
-// ===== ADICIONAR =====
+// ===== CRUD =====
 async function adicionar() {
   const desc = document.getElementById("desc").value;
   const valor = Number(document.getElementById("valor").value);
   const tipo = document.getElementById("tipo").value;
-  const parcelas = Number(document.getElementById("parcelas").value);
 
-  if (!desc || !valor) {
-    alert("Preencha os campos");
-    return;
-  }
-
-  await fetch("/regras", {
+  await fetch(API + "/regras", {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": token
+    },
     body: JSON.stringify({
       descricao: desc,
       tipo,
       valor,
       valorParcela: valor,
-      totalParcelas: parcelas,
+      totalParcelas: 1,
       parcelasPagas: 0,
       ativo: true
     })
   });
 
-  document.getElementById("desc").value = "";
-  document.getElementById("valor").value = "";
-  document.getElementById("parcelas").value = "";
-
   render();
 }
 
-// ===== FECHAR MÊS =====
+async function deletar(id) {
+  await fetch(API + `/regras/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: token }
+  });
+  render();
+}
+
+// ===== HISTÓRICO =====
+async function carregarHistorico() {
+  const res = await fetch(API + "/historico", {
+    headers: { Authorization: token }
+  });
+
+  const meses = await res.json();
+
+  const div = document.getElementById("historico");
+  div.innerHTML = "";
+
+  meses.forEach(m => {
+    div.innerHTML += `<div class="item">${m.mes} - R$ ${m.total}</div>`;
+  });
+}
+
+// ===== FECHAR =====
 async function fecharMes() {
   const dados = await gerarMes();
 
-  await fetch("/fechar", {
+  await fetch(API + "/fechar", {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": token
+    },
     body: JSON.stringify({
       mes: new Date().toISOString().slice(0,7),
       dados
@@ -273,83 +311,6 @@ async function fecharMes() {
   alert("Mês fechado!");
   render();
 }
-
-// ===== HISTÓRICO =====
-async function carregarHistorico() {
-  const res = await fetch("/historico");
-  const meses = await res.json();
-
-  const div = document.getElementById("historico");
-  div.innerHTML = "";
-
-  meses.forEach(m => {
-    div.innerHTML += `
-      <div class="hist-item">
-        <div class="hist-top">
-          <span onclick="verDetalhe('${m._id}')">${m.mes}</span>
-          <div>
-            <span>R$ ${m.total}</span>
-            <button onclick="deletarMes('${m._id}')">🗑️</button>
-          </div>
-        </div>
-        <div class="hist-bottom">
-          Clique para ver detalhes
-        </div>
-      </div>
-    `;
-  });
-}
-
-// ===== DETALHE =====
-async function verDetalhe(id) {
-  const res = await fetch("/historico");
-  const meses = await res.json();
-
-  const mes = meses.find(m => m._id === id);
-
-  const div = document.getElementById("detalhes");
-  const box = document.getElementById("detalheMes");
-
-  box.style.display = "block";
-  div.innerHTML = "";
-
-  mes.dados.forEach(d => {
-    div.innerHTML += `
-      <div class="item">
-        <div>
-          ${d.desc}<br>
-          <small>${d.tipo} ${d.parcela || ""}</small>
-        </div>
-        <div>R$ ${d.valor}</div>
-      </div>
-    `;
-  });
-}
-
-// ===== DELETAR REGRA =====
-async function deletar(id) {
-  if (!confirm("Deseja excluir?")) return;
-
-  await fetch(`/regras/${id}`, {
-    method: "DELETE"
-  });
-
-  render();
-}
-
-// ===== DELETAR MÊS =====
-async function deletarMes(id) {
-  if (!confirm("Deseja apagar este mês?")) return;
-
-  await fetch(`/historico/${id}`, {
-    method: "DELETE"
-  });
-
-  carregarHistorico();
-}
-
-// ===== INIT =====
-render();
 
 </script>
 </body>
