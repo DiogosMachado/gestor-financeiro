@@ -4,8 +4,6 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const path = require("path");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 
 const app = express();
 
@@ -17,7 +15,7 @@ app.use(express.json());
 const MONGO_URL = process.env.MONGO_URL;
 
 if (!MONGO_URL) {
-  console.log("❌ MONGO_URL não definida no ambiente");
+  console.log("❌ MONGO_URL não definida");
 }
 
 mongoose.connect(MONGO_URL || "mongodb://127.0.0.1:27017/financas")
@@ -31,7 +29,6 @@ const User = mongoose.model("User", {
 });
 
 const Regra = mongoose.model("Regra", {
-  userId: String,
   descricao: String,
   tipo: String,
   valor: Number,
@@ -42,26 +39,10 @@ const Regra = mongoose.model("Regra", {
 });
 
 const Mes = mongoose.model("Mes", {
-  userId: String,
   mes: String,
   dados: Array,
   total: Number
 });
-
-// ===== AUTH =====
-function auth(req, res, next) {
-  const token = req.headers.authorization;
-
-  if (!token) return res.status(401).json({ erro: "Sem token" });
-
-  try {
-    const decoded = jwt.verify(token, "segredo");
-    req.userId = decoded.id;
-    next();
-  } catch {
-    res.status(401).json({ erro: "Token inválido" });
-  }
-}
 
 // ===== CHECK DB =====
 function checkDB(req, res, next) {
@@ -71,151 +52,185 @@ function checkDB(req, res, next) {
   next();
 }
 
-// ===== ROTAS =====
-
-// TESTE
+// ===== TESTE =====
 app.get("/teste", (req, res) => {
   res.json({ ok: true });
 });
 
-// ===== AUTH ROTAS =====
+// ===== LOGIN =====
+app.post("/login", async (req, res) => {
+  try {
+    const { email, senha } = req.body;
 
-// REGISTRAR
-app.post("/register", async (req, res) => {
-  const { email, senha } = req.body;
+    if (!email || !senha) {
+      return res.status(400).json({ erro: "Preencha tudo" });
+    }
 
-  const existe = await User.findOne({ email });
-  if (existe) return res.status(400).json({ erro: "Usuário já existe" });
+    const user = await User.findOne({ email });
 
-  const hash = await bcrypt.hash(senha, 10);
+    if (!user) {
+      return res.status(400).json({ erro: "Usuário não encontrado" });
+    }
 
-  const user = await User.create({ email, senha: hash });
+    if (user.senha !== senha) {
+      return res.status(400).json({ erro: "Senha incorreta" });
+    }
 
-  res.json(user);
+    res.json({ ok: true });
+
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
-// LOGIN
-app.post("/login", async (req, res) => {
-  const { email, senha } = req.body;
+// ===== CRIAR CONTA =====
+app.post("/register", async (req, res) => {
+  try {
+    const { email, senha } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ erro: "Usuário não encontrado" });
+    if (!email || !senha) {
+      return res.status(400).json({ erro: "Preencha tudo" });
+    }
 
-  const ok = await bcrypt.compare(senha, user.senha);
-  if (!ok) return res.status(400).json({ erro: "Senha inválida" });
+    const existe = await User.findOne({ email });
 
-  const token = jwt.sign({ id: user._id }, "segredo");
+    if (existe) {
+      return res.status(400).json({ erro: "Usuário já existe" });
+    }
 
-  res.json({ token });
+    await User.create({ email, senha });
+
+    res.json({ ok: true });
+
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
 // ===== REGRAS =====
-
-// CRIAR
-app.post("/regras", auth, checkDB, async (req, res) => {
-  const regra = await Regra.create({
-    ...req.body,
-    userId: req.userId
-  });
-  res.json(regra);
+app.post("/regras", checkDB, async (req, res) => {
+  try {
+    const regra = await Regra.create(req.body);
+    res.json(regra);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
-// LISTAR
-app.get("/regras", auth, checkDB, async (req, res) => {
-  const regras = await Regra.find({ userId: req.userId });
-  res.json(regras);
+app.get("/regras", checkDB, async (req, res) => {
+  try {
+    const regras = await Regra.find();
+    res.json(regras);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
 // ===== GERAR MÊS =====
-app.get("/mes", auth, checkDB, async (req, res) => {
-  const regras = await Regra.find({ userId: req.userId });
+app.get("/mes", checkDB, async (req, res) => {
+  try {
+    const regras = await Regra.find();
+    let lista = [];
 
-  let lista = [];
+    regras.forEach(r => {
+      if (!r.ativo) return;
 
-  regras.forEach(r => {
-    if (!r.ativo) return;
-
-    if (["fixo", "variavel", "entrada"].includes(r.tipo)) {
-      lista.push({
-        _id: r._id,
-        desc: r.descricao,
-        valor: r.valor,
-        tipo: r.tipo
-      });
-    }
-
-    if (r.tipo === "parcelado") {
-      if (r.parcelasPagas < r.totalParcelas) {
+      if (["fixo", "variavel", "entrada"].includes(r.tipo)) {
         lista.push({
           _id: r._id,
           desc: r.descricao,
-          valor: r.valorParcela,
-          tipo: "parcelado",
-          parcela: `${r.parcelasPagas + 1}/${r.totalParcelas}`
+          valor: r.valor,
+          tipo: r.tipo
         });
       }
-    }
-  });
 
-  res.json(lista);
+      if (r.tipo === "parcelado") {
+        if (r.parcelasPagas < r.totalParcelas) {
+          lista.push({
+            _id: r._id,
+            desc: r.descricao,
+            valor: r.valorParcela,
+            tipo: "parcelado",
+            parcela: `${r.parcelasPagas + 1}/${r.totalParcelas}`
+          });
+        }
+      }
+    });
+
+    res.json(lista);
+
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
 // ===== FECHAR MÊS =====
-app.post("/fechar", auth, checkDB, async (req, res) => {
-  const { mes, dados } = req.body;
+app.post("/fechar", checkDB, async (req, res) => {
+  try {
+    const { mes, dados } = req.body;
 
-  const existe = await Mes.findOne({ mes, userId: req.userId });
-  if (existe) return res.status(400).json({ erro: "Mês já fechado" });
+    const existe = await Mes.findOne({ mes });
+    if (existe) {
+      return res.status(400).json({ erro: "Mês já fechado" });
+    }
 
-  const regras = await Regra.find({ userId: req.userId });
+    const regras = await Regra.find();
 
-  for (let r of regras) {
-    if (r.tipo === "parcelado" && r.ativo) {
-      if (r.parcelasPagas < r.totalParcelas) {
-        r.parcelasPagas++;
-        if (r.parcelasPagas === r.totalParcelas) r.ativo = false;
-        await r.save();
+    for (let r of regras) {
+      if (r.tipo === "parcelado" && r.ativo) {
+        if (r.parcelasPagas < r.totalParcelas) {
+          r.parcelasPagas++;
+
+          if (r.parcelasPagas === r.totalParcelas) {
+            r.ativo = false;
+          }
+
+          await r.save();
+        }
       }
     }
+
+    const total = dados.reduce((acc, d) => {
+      return d.tipo === "entrada"
+        ? acc + d.valor
+        : acc - d.valor;
+    }, 0);
+
+    await Mes.create({ mes, dados, total });
+
+    res.json({ ok: true });
+
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
   }
-
-  const total = dados.reduce((acc, d) => {
-    return d.tipo === "entrada"
-      ? acc + d.valor
-      : acc - d.valor;
-  }, 0);
-
-  await Mes.create({
-    userId: req.userId,
-    mes,
-    dados,
-    total
-  });
-
-  res.json({ ok: true });
 });
 
 // ===== HISTÓRICO =====
-app.get("/historico", auth, checkDB, async (req, res) => {
-  const meses = await Mes.find({ userId: req.userId }).sort({ mes: -1 });
-  res.json(meses);
+app.get("/historico", checkDB, async (req, res) => {
+  try {
+    const meses = await Mes.find().sort({ mes: -1 });
+    res.json(meses);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
 });
 
 // ===== DELETE =====
-app.delete("/regras/:id", auth, checkDB, async (req, res) => {
-  await Regra.deleteOne({ _id: req.params.id, userId: req.userId });
+app.delete("/regras/:id", checkDB, async (req, res) => {
+  await Regra.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
 });
 
-app.delete("/historico/:id", auth, checkDB, async (req, res) => {
-  await Mes.deleteOne({ _id: req.params.id, userId: req.userId });
+app.delete("/historico/:id", checkDB, async (req, res) => {
+  await Mes.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
 });
 
 // ===== FRONTEND =====
 app.use(express.static(path.join(__dirname, "public")));
 
-app.use((req, res) => {
+// ⚠️ Fallback SEM QUEBRAR API
+app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
