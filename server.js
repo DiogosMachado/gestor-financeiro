@@ -218,7 +218,7 @@ app.get("/historico", auth, checkDB, async (req, res) => {
 app.use(express.static(path.join(__dirname, "public")));
 
 // ⚠️ CORREÇÃO CRÍTICA (ESSA É A CAUSA DO SEU ERRO)
-app.get("*", (req, res) => {
+app.get("/*", (req, res) => {
   // NÃO deixa API cair aqui
   if (req.path.startsWith("/login") || 
       req.path.startsWith("/register") ||
