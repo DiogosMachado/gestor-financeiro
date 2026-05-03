@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ override: true });
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -10,22 +10,27 @@ const jwt = require("jsonwebtoken");
 const app = express();
 
 // ===== CONFIG =====
-const JWT_SECRET = process.env.JWT_SECRET || "segredo";
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// ===== DEBUG =====
+console.log("🔥 ENV:", process.env.MONGO_URL);
 
 // ===== MIDDLEWARE =====
 app.use(cors());
 app.use(express.json());
 
 // ===== CONEXÃO MONGO =====
-const MONGO_URL = process.env.MONGO_URL;
-
-if (!MONGO_URL) {
+if (!process.env.MONGO_URL) {
   console.log("❌ MONGO_URL não definida");
+  process.exit(1);
 }
 
-mongoose.connect(MONGO_URL || "mongodb://127.0.0.1:27017/financas")
-.then(() => console.log("🔥 Mongo conectado"))
-.catch(err => console.log("❌ Erro Mongo:", err.message));
+mongoose.connect(process.env.MONGO_URL)
+  .then(() => console.log("🔥 Mongo conectado"))
+  .catch(err => {
+    console.log("❌ Erro Mongo:", err.message);
+    process.exit(1);
+  });
 
 // ===== MODELS =====
 const User = mongoose.models.User || mongoose.model("User", {
@@ -63,7 +68,7 @@ function auth(req, res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.userId = decoded.id;
     next();
-  } catch (err) {
+  } catch {
     return res.status(401).json({ erro: "Token inválido" });
   }
 }
@@ -78,14 +83,12 @@ function checkDB(req, res, next) {
 
 // ===== ROTAS =====
 
-// TESTE
 app.get("/teste", (req, res) => {
   res.json({ ok: true });
 });
 
 // ===== AUTH =====
 
-// REGISTRO
 app.post("/register", async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -111,7 +114,6 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// LOGIN
 app.post("/login", async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -132,7 +134,9 @@ app.post("/login", async (req, res) => {
       return res.status(400).json({ erro: "Senha inválida" });
     }
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET);
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, {
+      expiresIn: "7d"
+    });
 
     res.json({ token });
 
@@ -166,6 +170,7 @@ app.get("/regras", auth, checkDB, async (req, res) => {
 });
 
 // ===== MES =====
+
 app.get("/mes", auth, checkDB, async (req, res) => {
   try {
     const regras = await Regra.find({ userId: req.userId });
@@ -205,6 +210,7 @@ app.get("/mes", auth, checkDB, async (req, res) => {
 });
 
 // ===== HISTÓRICO =====
+
 app.get("/historico", auth, checkDB, async (req, res) => {
   try {
     const meses = await Mes.find({ userId: req.userId }).sort({ mes: -1 });
@@ -215,23 +221,15 @@ app.get("/historico", auth, checkDB, async (req, res) => {
 });
 
 // ===== FRONTEND =====
+
 app.use(express.static(path.join(__dirname, "public")));
 
-// ⚠️ CORREÇÃO CRÍTICA (ESSA É A CAUSA DO SEU ERRO)
-app.get("/*", (req, res) => {
-  // NÃO deixa API cair aqui
-  if (req.path.startsWith("/login") || 
-      req.path.startsWith("/register") ||
-      req.path.startsWith("/regras") ||
-      req.path.startsWith("/mes") ||
-      req.path.startsWith("/historico")) {
-    return res.status(404).json({ erro: "Rota não encontrada" });
-  }
-
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // ===== SERVER =====
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
