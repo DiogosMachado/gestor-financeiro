@@ -22,14 +22,12 @@ app.use(express.json());
 // ===== CONEXÃO MONGO =====
 if (!process.env.MONGO_URL) {
   console.log("❌ MONGO_URL não definida");
-  process.exit(1);
 }
 
 mongoose.connect(process.env.MONGO_URL)
   .then(() => console.log("🔥 Mongo conectado"))
   .catch(err => {
     console.log("❌ Erro Mongo:", err.message);
-    process.exit(1);
   });
 
 // ===== MODELS =====
