@@ -222,7 +222,7 @@ app.get("/historico", auth, checkDB, async (req, res) => {
 
 app.use(express.static(path.join(__dirname, "public")));
 
-app.use((req, res) => {
+app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
