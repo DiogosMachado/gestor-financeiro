@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -90,11 +91,6 @@ button:hover{
   padding:15px;
   border-radius:10px;
   margin-bottom:10px;
-  transition:0.2s;
-}
-
-.hist-item:hover{
-  background:#334155;
 }
 
 .hist-top{
@@ -102,12 +98,6 @@ button:hover{
   justify-content:space-between;
   align-items:center;
   font-weight:bold;
-}
-
-.hist-top div{
-  display:flex;
-  align-items:center;
-  gap:10px;
 }
 
 .hist-bottom{
@@ -134,7 +124,12 @@ button:hover{
   color:#ef4444;
 }
 
+canvas{
+  max-height:400px;
+}
+
 </style>
+
 </head>
 
 <body>
@@ -148,15 +143,35 @@ button:hover{
 
 <h3>Adicionar Transação</h3>
 
-<input id="desc" placeholder="Descrição">
+<input
+  id="desc"
+  placeholder="Descrição"
+/>
 
-<input id="valor" type="number" placeholder="Valor">
+<input
+  id="valor"
+  type="number"
+  placeholder="Valor"
+/>
 
 <select id="tipo">
-  <option value="entrada">Salário / Entrada</option>
-  <option value="variavel">Gasto Variável</option>
-  <option value="fixo">Gasto Fixo</option>
-  <option value="parcelado">Parcelado</option>
+
+  <option value="entrada">
+    Salário / Entrada
+  </option>
+
+  <option value="variavel">
+    Gasto Variável
+  </option>
+
+  <option value="fixo">
+    Gasto Fixo
+  </option>
+
+  <option value="parcelado">
+    Parcelado
+  </option>
+
 </select>
 
 <input
@@ -229,17 +244,17 @@ Fechar Mês
 let grafico;
 
 // ===============================
-// BUSCAR MÊS
+// BUSCAR DADOS
 // ===============================
 
 async function gerarMes(){
 
   try{
 
-    const res = await fetch("/mes");
+    const res = await fetch("/regras");
 
     if(!res.ok){
-      throw new Error("Erro ao carregar mês");
+      throw new Error("Erro ao carregar");
     }
 
     return await res.json();
@@ -269,23 +284,28 @@ async function render(){
 
   dados.forEach(d => {
 
+    const valor = Number(d.valor) || 0;
+
     if(d.tipo === "entrada"){
-      entradas += d.valor;
+      entradas += valor;
     }else{
-      saidas += d.valor;
+      saidas += valor;
     }
 
     lista.innerHTML += `
-    
+
       <div class="item">
 
         <div>
-          ${d.desc}<br>
+
+          ${d.descricao || "Sem descrição"}
+
+          <br>
 
           <small>
             ${d.tipo}
-            ${d.parcela || ""}
           </small>
+
         </div>
 
         <div>
@@ -296,13 +316,17 @@ async function render(){
             : "saida"
           }">
 
-            R$ ${d.valor}
+            R$ ${valor.toFixed(2)}
 
           </span>
 
           ${
             d._id
-            ? `<button onclick="deletar('${d._id}')">X</button>`
+            ? `
+              <button onclick="deletar('${d._id}')">
+                X
+              </button>
+            `
             : ""
           }
 
@@ -361,30 +385,33 @@ function gerarGrafico(dados){
 
   const entrada = dados
     .filter(d => d.tipo === "entrada")
-    .reduce((a,b)=>a+b.valor,0);
+    .reduce((a,b)=>a + Number(b.valor),0);
 
   const fixo = dados
     .filter(d => d.tipo === "fixo")
-    .reduce((a,b)=>a+b.valor,0);
+    .reduce((a,b)=>a + Number(b.valor),0);
 
   const variavel = dados
     .filter(d => d.tipo === "variavel")
-    .reduce((a,b)=>a+b.valor,0);
+    .reduce((a,b)=>a + Number(b.valor),0);
 
   const parcelado = dados
     .filter(d => d.tipo === "parcelado")
-    .reduce((a,b)=>a+b.valor,0);
+    .reduce((a,b)=>a + Number(b.valor),0);
 
   if(grafico){
     grafico.destroy();
   }
 
   grafico = new Chart(
+
     document.getElementById("grafico"),
+
     {
       type:"doughnut",
 
       data:{
+
         labels:[
           "Entrada",
           "Fixo",
@@ -393,12 +420,14 @@ function gerarGrafico(dados){
         ],
 
         datasets:[{
+
           data:[
             entrada,
             fixo,
             variavel,
             parcelado
           ]
+
         }]
       }
     }
@@ -413,7 +442,8 @@ async function adicionar(){
 
   const desc = document
     .getElementById("desc")
-    .value;
+    .value
+    .trim();
 
   const valor = Number(
     document.getElementById("valor").value
@@ -427,16 +457,16 @@ async function adicionar(){
     document.getElementById("parcelas").value
   );
 
-  if(!desc || !valor){
+  if(!desc || valor <= 0){
 
-    alert("Preencha os campos");
+    alert("Preencha corretamente");
 
     return;
   }
 
   try{
 
-    await fetch("/regras",{
+    const res = await fetch("/regras",{
 
       method:"POST",
 
@@ -452,15 +482,13 @@ async function adicionar(){
 
         valor,
 
-        valorParcela:valor,
-
-        totalParcelas:parcelas || 0,
-
-        parcelasPagas:0,
-
-        ativo:true
+        parcelas
       })
     });
+
+    if(!res.ok){
+      throw new Error("Erro ao salvar");
+    }
 
     document.getElementById("desc").value = "";
     document.getElementById("valor").value = "";
@@ -559,7 +587,7 @@ async function carregarHistorico(){
             <div>
 
               <span>
-                R$ ${m.total}
+                R$ ${Number(m.total || 0).toFixed(2)}
               </span>
 
               <button
@@ -617,18 +645,19 @@ async function verDetalhe(id){
 
         <div>
 
-          ${d.desc}<br>
+          ${d.descricao || "Sem descrição"}
+
+          <br>
 
           <small>
             ${d.tipo}
-            ${d.parcela || ""}
           </small>
 
         </div>
 
         <div>
 
-          R$ ${d.valor}
+          R$ ${Number(d.valor).toFixed(2)}
 
         </div>
 
@@ -639,7 +668,7 @@ async function verDetalhe(id){
 }
 
 // ===============================
-// DELETAR REGRA
+// DELETAR
 // ===============================
 
 async function deletar(id){
